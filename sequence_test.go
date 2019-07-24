@@ -3,7 +3,6 @@ package queue
 import (
 	"strconv"
 	"testing"
-	"time"
 )
 
 func Test_findInsertIndex(t *testing.T) {
@@ -82,7 +81,7 @@ func benchmarkSequenceAddN(b *testing.B, n int) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		seq := NewSequence("key 1", time.Second, ch)
+		seq := NewSequence("key 1", ch)
 		go seq.Run()
 
 		for j := 0; j < n; j++ {

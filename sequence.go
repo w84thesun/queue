@@ -3,7 +3,6 @@ package queue
 import (
 	"errors"
 	"sync"
-	"time"
 )
 
 type Sequence struct {
@@ -20,19 +19,14 @@ type Sequence struct {
 	// List of ordered jobs
 	jobs []seqJob
 
-	// By default when jobs list is exhausted, sequence tries to kill itself immediately.
-	// IdleTTL defines pause before jobs exhaustion and suicide attempt.
-	idleTTL time.Duration
-
 	delete chan<- string
 }
 
-func NewSequence(key string, idleTTL time.Duration, delete chan<- string) *Sequence {
+func NewSequence(key string, delete chan<- string) *Sequence {
 	return &Sequence{
 		key:        key,
 		firstAdded: make(chan struct{}),
 		jobs:       []seqJob{},
-		idleTTL:    idleTTL,
 		delete:     delete,
 	}
 }

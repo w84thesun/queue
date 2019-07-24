@@ -54,7 +54,7 @@ func (q *Queue) handleRequest(job Job) {
 	seq, ok := q.sequences[job.SequenceKey]
 	if !ok {
 		// Prepare and start new sequence
-		seq = NewSequence(job.SequenceKey, 0, q.drained)
+		seq = NewSequence(job.SequenceKey, q.drained)
 		q.sequences[job.SequenceKey] = seq
 		go seq.Run()
 	}
