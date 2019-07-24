@@ -2,45 +2,71 @@ package queue
 
 import (
 	"sync"
+	"time"
 )
 
 type Sequence struct {
-	key    string
+	// Sequence key, used to delete Sequence from Queue
+	key string
+
+	// Sequence will be deleted when key is passed through this channel
 	killCh chan<- string
+
+	cancelKillCh chan struct{}
 
 	m sync.Mutex
 
-	jobs []Job
+	// List of ordered jobs
+	jobs []seqJob
+
+	// By default when jobs list is exhausted, sequence tries to kill itself immediately.
+	// IdleTTL defines pause before jobs exhaustion and suicide attempt.
+	idleTTL time.Duration
 }
 
-func NewSequence(key string, killCh chan<- string) *Sequence {
+func NewSequence(key string, idleTTL time.Duration, killCh chan<- string) *Sequence {
 	return &Sequence{
-		key:    key,
-		killCh: killCh,
-		jobs:   []Job{},
+		key:          key,
+		killCh:       killCh,
+		cancelKillCh: make(chan struct{}),
+		jobs:         []seqJob{},
+		idleTTL:      idleTTL,
 	}
 }
 
-func (s *Sequence) Add(job Job) {
+func (s *Sequence) Add(priority int, unique string, action Action) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	if job.Unique != "" {
-		exists := findDuplicates(s.jobs, job.Unique)
+	// Reject unique duplicates
+	if unique != "" {
+		exists := findDuplicates(s.jobs, unique)
 		if exists {
 			return
 		}
 	}
 
 	// find out position to insert job
-	i := findInsertIndex(s.jobs, job.Priority)
+	i := findInsertIndex(s.jobs, priority)
+
+	job := seqJob{
+		priority: priority,
+		unique:   unique,
+		action:   action,
+	}
 
 	s.jobs = insert(s.jobs, i, job)
+
+	// Cancel kill attempts if active
+	select {
+	case s.cancelKillCh <- struct{}{}:
+	default:
+	}
 }
 
-func findInsertIndex(jobs []Job, priority int) (idx int) {
+func findInsertIndex(jobs []seqJob, priority int) (idx int) {
 	for i, job := range jobs {
-		if priority < job.Priority {
+		if priority < job.priority {
 			return i
 		}
 	}
@@ -48,9 +74,16 @@ func findInsertIndex(jobs []Job, priority int) (idx int) {
 	return len(jobs)
 }
 
-func findDuplicates(jobs []Job, unique string) bool {
+type seqJob struct {
+	priority int
+	unique   string
+	action   Action
+}
+
+// look for jobs with same unique key
+func findDuplicates(jobs []seqJob, unique string) bool {
 	for _, job := range jobs {
-		if job.Unique == unique {
+		if job.unique == unique {
 			return true
 		}
 	}
@@ -58,40 +91,45 @@ func findDuplicates(jobs []Job, unique string) bool {
 }
 
 // Insert without new slice creation https://github.com/golang/go/wiki/SliceTricks#insert
-func insert(jobs []Job, i int, job Job) []Job {
-	jobs = append(jobs, Job{})
+func insert(jobs []seqJob, i int, job seqJob) []seqJob {
+	jobs = append(jobs, seqJob{})
 	copy(jobs[i+1:], jobs[i:])
 	jobs[i] = job
 
 	return jobs
 }
 
-func (s *Sequence) Len() int {
-	s.m.Lock()
-	l := len(s.jobs)
-	s.m.Unlock()
-	return l
+// Kill is called when there are no jobs remaining.
+// It tries to kill Sequence by passing sequence key to outer Queue.
+// Kill can be cancelled if query adds another job for this sequence, which will send msg to addedCh
+func (s *Sequence) kill() {
+	select {
+	case s.killCh <- s.key:
+	case <-s.cancelKillCh:
+	}
 }
 
+// Continue calls processes next Job in sequence
+// If there are no jobs left sequence initiates
 func (s *Sequence) Continue() {
 	job, ok := s.shift()
 	if !ok {
-		s.killCh <- s.key
+		s.kill()
 		return
 	}
 
 	go func() {
-		job.Action()
+		job.action()
 		s.Continue()
 	}()
 }
 
-func (s *Sequence) shift() (job Job, ok bool) {
+func (s *Sequence) shift() (job seqJob, ok bool) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	if len(s.jobs) == 0 {
-		return Job{}, false
+		return seqJob{}, false
 	}
 
 	job, s.jobs = s.jobs[0], s.jobs[1:]

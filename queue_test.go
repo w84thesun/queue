@@ -1,15 +1,17 @@
-package queue
+package queue_test
 
 import (
 	"log"
 	"sync"
 	"testing"
 	"time"
+
+	"gitlab.nbaplus.tk/backend/queue"
 )
 
 func TestQueue_RunPi(t *testing.T) {
-	queue := NewQueue()
-	go queue.Run()
+	q := queue.NewQueue()
+	go q.Run()
 
 	priorities := map[string][]int{
 		"alpha": {
@@ -66,7 +68,7 @@ func TestQueue_RunPi(t *testing.T) {
 		for range values {
 			wg.Add(1)
 
-			queue.Add(Job{
+			q.Add(queue.Job{
 				SequenceKey: key,
 				Priority:    1,
 				Action: func() {
@@ -81,16 +83,16 @@ func TestQueue_RunPi(t *testing.T) {
 
 	wg.Wait()
 	log.Println("stopping")
-	queue.Stop()
+	q.Stop()
 }
 
 func TestQueue_Run(t *testing.T) {
-	queue := NewQueue()
-	go queue.Run()
+	q := queue.NewQueue()
+	go q.Run()
 
 	wg := sync.WaitGroup{}
 
-	queue.Add(Job{
+	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    High,
 		Action: func() {
@@ -99,7 +101,7 @@ func TestQueue_Run(t *testing.T) {
 		},
 	})
 
-	queue.Add(Job{
+	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Medium,
 		Action: func() {
@@ -109,7 +111,7 @@ func TestQueue_Run(t *testing.T) {
 	})
 
 	wg.Add(1)
-	queue.Add(Job{
+	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Low,
 		Action: func() {
@@ -119,7 +121,7 @@ func TestQueue_Run(t *testing.T) {
 		Unique: "recalculate",
 	})
 
-	queue.Add(Job{
+	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Medium,
 		Action: func() {
@@ -128,7 +130,7 @@ func TestQueue_Run(t *testing.T) {
 		},
 	})
 
-	queue.Add(Job{
+	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Low,
 		Action: func() {

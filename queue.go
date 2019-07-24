@@ -1,18 +1,11 @@
 package queue
 
-import "log"
+import (
+	"log"
+	"time"
+)
 
 // Queue provides concurrent-safe queue mechanism that is split by keys and organized with priorities.
-// Requirements:
-//   1. Concurrent-safe
-// 	 2. Fast - minimum await time between jobs and on adding new tasks
-//   3. Execution split by keys: tasks with same keys are executed sequentially,
-//      while different keys results in parallel execution
-//   4. Tasks action within single sequence must be ordered using priority value,
-//      where smaller value means higher priority
-//   5. Sequence jobs can be unique, means if there is queued unique job,
-//      attempt to add another unique job will do nothing
-
 type Queue struct {
 	sequences map[string]*Sequence
 
@@ -46,22 +39,17 @@ cycle:
 		case job := <-q.requests:
 			seq, ok := q.sequences[job.SequenceKey]
 			if ok {
-				seq.Add(job)
+				seq.Add(job.Priority, job.Unique, job.Action)
 				break
 			}
 
-			newSeq := NewSequence(job.SequenceKey, q.killCh)
-			newSeq.Add(job)
+			newSeq := NewSequence(job.SequenceKey, time.Second, q.killCh)
+			newSeq.Add(job.Priority, job.Unique, job.Action)
 
 			q.sequences[job.SequenceKey] = newSeq
 			newSeq.Continue()
 
 		case killKey := <-q.killCh:
-			seq := q.sequences[killKey]
-			if seq.Len() > 0 {
-				seq.Continue()
-				break
-			}
 			delete(q.sequences, killKey)
 		case <-q.stopCh:
 			break cycle
@@ -82,15 +70,6 @@ func (q *Queue) Stop() {
 // do is func that will be executed
 func (q *Queue) Add(job Job) {
 	q.requests <- job
-}
-
-func (q *Queue) Add2(sequenceKey string, priority int, unique string, action Action) {
-	q.requests <- Job{
-		SequenceKey: sequenceKey,
-		Priority:    priority,
-		Unique:      unique,
-		Action:      action,
-	}
 }
 
 type Job struct {
