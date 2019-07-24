@@ -11,7 +11,7 @@ type Queue struct {
 
 	// Makes Add() concurrent-safe by processing requests one-by-one
 	// Channel should be fast that mutex
-	requests chan Job
+	requests chan jobRequest
 
 	// Delete used to delete drained sequences.
 	// If drained sequence is found on Add(),
@@ -26,7 +26,7 @@ type Action func()
 func NewQueue() *Queue {
 	return &Queue{
 		sequences: map[string]*Sequence{},
-		requests:  make(chan Job),
+		requests:  make(chan jobRequest),
 		drained:   make(chan string),
 		stopCh:    make(chan struct{}),
 	}
@@ -38,8 +38,8 @@ func (q *Queue) Run() {
 cycle:
 	for {
 		select {
-		case job := <-q.requests:
-			q.handleRequest(job)
+		case req := <-q.requests:
+			q.handleRequest(req)
 		case key := <-q.drained:
 			delete(q.sequences, key)
 		case <-q.stopCh:
@@ -50,24 +50,36 @@ cycle:
 	log.Println("queue stopped")
 }
 
-func (q *Queue) handleRequest(job Job) {
-	seq, ok := q.sequences[job.SequenceKey]
+func (q *Queue) handleRequest(req jobRequest) {
+	seq, ok := q.sequences[req.job.SequenceKey]
 	if !ok {
 		// Prepare and start new sequence
-		seq = NewSequence(job.SequenceKey, q.drained)
-		q.sequences[job.SequenceKey] = seq
+		seq = NewSequence(req.job.SequenceKey, q.drained)
+		q.sequences[req.job.SequenceKey] = seq
 		go seq.Run()
 	}
 
 	// Add to existing sequence.
-	// If existing sequence is drained, delete it and call handleRequest again, it will recreate sequence
-	err := seq.Add(job.Priority, job.Unique, job.Action)
+	err := seq.Add(req.job.Priority, req.job.Unique, req.job.Action)
 	if err != nil {
-		if err == ErrDrained {
-			delete(q.sequences, job.SequenceKey)
-			q.handleRequest(job)
+		// Unique job already exists, job not added
+		if err == ErrDuplicate {
+			req.reply <- false
+			return
 		}
+
+		// If existing sequence is drained, delete it and call handleRequest again, it will recreate sequence
+		// No reply here as next handleRequest will reply
+		if err == ErrDrained {
+			delete(q.sequences, req.job.SequenceKey)
+			q.handleRequest(req)
+			return
+		}
+
+		log.Fatalf("unexpected error: %v", err)
 	}
+
+	req.reply <- true
 }
 
 // Stops queue by trying to break Run() cycle
@@ -75,9 +87,19 @@ func (q *Queue) Stop() {
 	q.stopCh <- struct{}{}
 }
 
-// Entry point to Sequence.
-func (q *Queue) Add(job Job) {
-	q.requests <- job
+// Entry point to Sequence. Returns true if job was successfully added and
+// false if passed job is unique and already exists in
+func (q *Queue) Add(job Job) (ok bool) {
+	reply := make(chan bool)
+	q.requests <- jobRequest{job: job, reply: reply}
+
+	return <-reply
+
+}
+
+type jobRequest struct {
+	reply chan bool
+	job   Job
 }
 
 type Job struct {

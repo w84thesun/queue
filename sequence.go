@@ -56,7 +56,6 @@ var (
 )
 
 func (s *Sequence) Add(priority int, unique string, action Action) error {
-
 	s.m.Lock()
 	defer s.m.Unlock()
 	defer s.once.Do(func() { s.firstAdded <- struct{}{} })
