@@ -2,7 +2,6 @@ package queue
 
 import (
 	"log"
-	"time"
 )
 
 // Queue provides concurrent-safe queue mechanism that is split by keys and organized with priorities.
@@ -14,8 +13,9 @@ type Queue struct {
 	// Channel should be fast that mutex
 	requests chan Job
 
-	// Sequence put its key in killCh to kill itself
-	killCh chan string
+	// Delete used to delete drained sequences.
+	// If drained sequence is found on Add(),
+	drained chan string
 
 	// Used to break Run() cycle
 	stopCh chan struct{}
@@ -27,7 +27,7 @@ func NewQueue() *Queue {
 	return &Queue{
 		sequences: map[string]*Sequence{},
 		requests:  make(chan Job),
-		killCh:    make(chan string),
+		drained:   make(chan string),
 		stopCh:    make(chan struct{}),
 	}
 }
@@ -39,26 +39,35 @@ cycle:
 	for {
 		select {
 		case job := <-q.requests:
-			seq, ok := q.sequences[job.SequenceKey]
-			if ok {
-				seq.Add(job.Priority, job.Unique, job.Action)
-				break
-			}
-
-			newSeq := NewSequence(job.SequenceKey, time.Second, q.killCh)
-			newSeq.Add(job.Priority, job.Unique, job.Action)
-
-			q.sequences[job.SequenceKey] = newSeq
-			newSeq.Continue()
-
-		case killKey := <-q.killCh:
-			delete(q.sequences, killKey)
+			q.handleRequest(job)
+		case key := <-q.drained:
+			delete(q.sequences, key)
 		case <-q.stopCh:
 			break cycle
 		}
 	}
 
 	log.Println("queue stopped")
+}
+
+func (q *Queue) handleRequest(job Job) {
+	seq, ok := q.sequences[job.SequenceKey]
+	if !ok {
+		// Prepare and start new sequence
+		seq = NewSequence(job.SequenceKey, 0, q.drained)
+		q.sequences[job.SequenceKey] = seq
+		go seq.Run()
+	}
+
+	// Add to existing sequence.
+	// If existing sequence is drained, delete it and call handleRequest again, it will recreate sequence
+	err := seq.Add(job.Priority, job.Unique, job.Action)
+	if err != nil {
+		if err == ErrDrained {
+			delete(q.sequences, job.SequenceKey)
+			q.handleRequest(job)
+		}
+	}
 }
 
 // Stops queue by trying to break Run() cycle

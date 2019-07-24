@@ -148,3 +148,35 @@ const (
 	Medium
 	Low
 )
+
+func BenchmarkName(b *testing.B) {
+	q := queue.NewQueue()
+	go q.Run()
+
+	//done := make(chan int)
+
+	b.ResetTimer()
+
+	//go func() {
+	//	for range done {
+	//	}
+	//}()
+
+	const n = 5
+
+	for i := 0; i < b.N; i++ {
+		wg := sync.WaitGroup{}
+		wg.Add(n)
+
+		for j := 0; j < n; j++ {
+			q.Add(queue.Job{
+				SequenceKey: "1",
+				Priority:    i,
+				Action: func() {
+					wg.Done()
+				},
+			})
+		}
+		wg.Wait()
+	}
+}

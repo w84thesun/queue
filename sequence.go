@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -9,12 +10,12 @@ type Sequence struct {
 	// Sequence key, used to delete Sequence from Queue
 	key string
 
-	// Sequence will be deleted when key is passed through this channel
-	killCh chan<- string
-
-	cancelKillCh chan struct{}
+	firstAdded chan struct{}
+	once       sync.Once
 
 	m sync.Mutex
+
+	drained bool
 
 	// List of ordered jobs
 	jobs []seqJob
@@ -22,27 +23,58 @@ type Sequence struct {
 	// By default when jobs list is exhausted, sequence tries to kill itself immediately.
 	// IdleTTL defines pause before jobs exhaustion and suicide attempt.
 	idleTTL time.Duration
+
+	delete chan<- string
 }
 
-func NewSequence(key string, idleTTL time.Duration, killCh chan<- string) *Sequence {
+func NewSequence(key string, idleTTL time.Duration, delete chan<- string) *Sequence {
 	return &Sequence{
-		key:          key,
-		killCh:       killCh,
-		cancelKillCh: make(chan struct{}),
-		jobs:         []seqJob{},
-		idleTTL:      idleTTL,
+		key:        key,
+		firstAdded: make(chan struct{}),
+		jobs:       []seqJob{},
+		idleTTL:    idleTTL,
+		delete:     delete,
 	}
 }
 
-func (s *Sequence) Add(priority int, unique string, action Action) {
+func (s *Sequence) Run() {
+	<-s.firstAdded
+
+	for {
+		s.m.Lock()
+		job, found := s.shift()
+		if !found {
+			s.drained = true
+			s.m.Unlock()
+			break
+		}
+		s.m.Unlock()
+
+		job.action()
+	}
+
+	s.delete <- s.key
+}
+
+var (
+	ErrDuplicate = errors.New("duplicate")
+	ErrDrained   = errors.New("drained")
+)
+
+func (s *Sequence) Add(priority int, unique string, action Action) error {
+
 	s.m.Lock()
 	defer s.m.Unlock()
+	defer s.once.Do(func() { s.firstAdded <- struct{}{} })
 
+	if s.drained {
+		return ErrDrained
+	}
 	// Reject unique duplicates
 	if unique != "" {
 		exists := findDuplicates(s.jobs, unique)
 		if exists {
-			return
+			return ErrDuplicate
 		}
 	}
 
@@ -57,11 +89,7 @@ func (s *Sequence) Add(priority int, unique string, action Action) {
 
 	s.jobs = insert(s.jobs, i, job)
 
-	// Cancel kill attempts if active
-	select {
-	case s.cancelKillCh <- struct{}{}:
-	default:
-	}
+	return nil
 }
 
 func findInsertIndex(jobs []seqJob, priority int) (idx int) {
@@ -99,35 +127,7 @@ func insert(jobs []seqJob, i int, job seqJob) []seqJob {
 	return jobs
 }
 
-// Kill is called when there are no jobs remaining.
-// It tries to kill Sequence by passing sequence key to outer Queue.
-// Kill can be cancelled if query adds another job for this sequence, which will send msg to addedCh
-func (s *Sequence) kill() {
-	select {
-	case s.killCh <- s.key:
-	case <-s.cancelKillCh:
-	}
-}
-
-// Continue calls processes next Job in sequence
-// If there are no jobs left sequence initiates
-func (s *Sequence) Continue() {
-	job, ok := s.shift()
-	if !ok {
-		s.kill()
-		return
-	}
-
-	go func() {
-		job.action()
-		s.Continue()
-	}()
-}
-
 func (s *Sequence) shift() (job seqJob, ok bool) {
-	s.m.Lock()
-	defer s.m.Unlock()
-
 	if len(s.jobs) == 0 {
 		return seqJob{}, false
 	}

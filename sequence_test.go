@@ -83,57 +83,10 @@ func benchmarkSequenceAddN(b *testing.B, n int) {
 
 	for i := 0; i < b.N; i++ {
 		seq := NewSequence("key 1", time.Second, ch)
+		go seq.Run()
 
 		for j := 0; j < n; j++ {
 			seq.Add(0, "", func() {})
 		}
-	}
-}
-
-func BenchmarkSequence_Continue(b *testing.B) {
-	benches := []int{1, 2, 5, 10, 25, 100, 200, 500, 1000, 5000}
-
-	for _, n := range benches {
-		b.Run(strconv.Itoa(n), func(b *testing.B) {
-			benchmarkSequenceContinueN(b, n)
-		})
-	}
-}
-
-func benchmarkSequenceContinueN(b *testing.B, n int) {
-	killCh := make(chan string)
-	go func() {
-		for {
-			<-killCh
-		}
-	}()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	endCh := make(chan struct{})
-
-	jobs := make([]seqJob, n)
-	for i := 0; i < n-1; i++ {
-		jobs[i] = seqJob{
-			priority: 0,
-			unique:   "",
-			action:   func() {},
-		}
-	}
-	jobs[n-1] = seqJob{priority: 1, unique: "", action: func() { endCh <- struct{}{} }}
-
-	seq := &Sequence{
-		key:    "key 1",
-		killCh: killCh,
-	}
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		seq.jobs = make([]seqJob, len(jobs))
-		copy(seq.jobs, jobs)
-		b.StartTimer()
-
-		seq.Continue()
-		<-endCh
 	}
 }
