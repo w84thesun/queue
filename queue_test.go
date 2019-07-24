@@ -2,6 +2,7 @@ package queue_test
 
 import (
 	"log"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -149,20 +150,21 @@ const (
 	Low
 )
 
-func BenchmarkName(b *testing.B) {
+func BenchmarkQueue(b *testing.B) {
+	benches := []int{1, 2, 5, 10, 20, 50, 100, 1000, 5000, 9000}
+
+	for _, n := range benches {
+		b.Run(strconv.Itoa(n), func(b *testing.B) {
+			benchmarkQueueN(b, n)
+		})
+	}
+}
+
+func benchmarkQueueN(b *testing.B, n int) {
 	q := queue.NewQueue()
 	go q.Run()
 
-	//done := make(chan int)
-
 	b.ResetTimer()
-
-	//go func() {
-	//	for range done {
-	//	}
-	//}()
-
-	const n = 5
 
 	for i := 0; i < b.N; i++ {
 		wg := sync.WaitGroup{}
