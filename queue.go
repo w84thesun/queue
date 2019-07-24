@@ -7,15 +7,17 @@ import (
 
 // Queue provides concurrent-safe queue mechanism that is split by keys and organized with priorities.
 type Queue struct {
+	// List of sequences
 	sequences map[string]*Sequence
 
 	// Makes Add() concurrent-safe by processing requests one-by-one
 	// Channel should be fast that mutex
 	requests chan Job
 
-	// identifier
+	// Sequence put its key in killCh to kill itself
 	killCh chan string
 
+	// Used to break Run() cycle
 	stopCh chan struct{}
 }
 
@@ -59,15 +61,12 @@ cycle:
 	log.Println("queue stopped")
 }
 
+// Stops queue by trying to break Run() cycle
 func (q *Queue) Stop() {
 	q.stopCh <- struct{}{}
 }
 
 // Entry point to Sequence.
-// queueKey is used to differentiate sequences,
-// e.g. if we want to process match operations one-by-one, matchID should be used
-// lower priority value means higher execution priority, e.g. priority 1 means high, 2 is medium, 3 is low etc
-// do is func that will be executed
 func (q *Queue) Add(job Job) {
 	q.requests <- job
 }
