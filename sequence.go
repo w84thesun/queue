@@ -9,16 +9,20 @@ type Sequence struct {
 	// Sequence key, used to delete Sequence from Queue
 	key string
 
+	// First added messaged only once after first Add() call
+	// Run() will wait for this message before processing jobs, this allows better flow in handleRequest()
 	firstAdded chan struct{}
 	once       sync.Once
 
 	m sync.Mutex
 
+	// Marks sequence as drained, i.e. at the end of life rejecting ady Add requests and pending deletion.
 	drained bool
 
 	// List of ordered jobs
 	jobs []seqJob
 
+	// Pass sequence key here to delete it from pool
 	delete chan<- string
 }
 
@@ -58,11 +62,14 @@ var (
 func (s *Sequence) Add(priority int, unique string, action Action) error {
 	s.m.Lock()
 	defer s.m.Unlock()
+
+	// If sequence is just created and this is its first Add() call, signal firstAdded for Run()
 	defer s.once.Do(func() { s.firstAdded <- struct{}{} })
 
 	if s.drained {
 		return ErrDrained
 	}
+
 	// Reject unique duplicates
 	if unique != "" {
 		exists := findDuplicates(s.jobs, unique)
@@ -120,6 +127,9 @@ func insert(jobs []seqJob, i int, job seqJob) []seqJob {
 	return jobs
 }
 
+// Shift (or front pop) pulls out first job and shift other elements to the left.
+// E.g. shift() on [5,2,6,7,4] will return 5 and change slice to [2.6.7.4]
+// Will return false if no jobs left
 func (s *Sequence) shift() (job seqJob, ok bool) {
 	if len(s.jobs) == 0 {
 		return seqJob{}, false

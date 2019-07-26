@@ -13,8 +13,7 @@ type Queue struct {
 	// Channel should be fast that mutex
 	requests chan jobRequest
 
-	// Delete used to delete drained sequences.
-	// If drained sequence is found on Add(),
+	// used to delete drained sequences.
 	drained chan string
 
 	// Used to break Run() cycle
@@ -94,7 +93,6 @@ func (q *Queue) Add(job Job) (ok bool) {
 	q.requests <- jobRequest{job: job, reply: reply}
 
 	return <-reply
-
 }
 
 type jobRequest struct {
