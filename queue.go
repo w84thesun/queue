@@ -61,24 +61,18 @@ func (q *Queue) handleRequest(req jobRequest) {
 	// Add to existing sequence.
 	err := seq.Add(req.job.Priority, req.job.Unique, req.job.Action)
 	if err != nil {
-		// Unique job already exists, job not added
-		if err == ErrDuplicate {
-			req.reply <- false
-			return
-		}
-
 		// If existing sequence is drained, delete it and call handleRequest again, it will recreate sequence
 		// No reply here as next handleRequest will reply
-		if err == ErrDrained {
+		if err == errDrained {
 			delete(q.sequences, req.job.SequenceKey)
 			q.handleRequest(req)
 			return
 		}
-
-		log.Fatalf("unexpected error: %v", err)
+		req.reply <- err
+		return
 	}
 
-	req.reply <- true
+	req.reply <- nil
 }
 
 // Stops queue by trying to break Run() cycle
@@ -88,15 +82,15 @@ func (q *Queue) Stop() {
 
 // Entry point to Sequence. Returns true if job was successfully added and
 // false if passed job is unique and already exists in
-func (q *Queue) Add(job Job) (ok bool) {
-	reply := make(chan bool)
+func (q *Queue) Add(job Job) (err error) {
+	reply := make(chan error)
 	q.requests <- jobRequest{job: job, reply: reply}
 
 	return <-reply
 }
 
 type jobRequest struct {
-	reply chan bool
+	reply chan error
 	job   Job
 }
 
