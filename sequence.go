@@ -56,7 +56,7 @@ func (s *Sequence) Run() {
 
 var (
 	ErrDuplicate = errors.New("duplicate")
-	ErrDrained   = errors.New("drained")
+	errDrained   = errors.New("drained")
 )
 
 func (s *Sequence) Add(priority int, unique string, action Action) error {
@@ -67,7 +67,7 @@ func (s *Sequence) Add(priority int, unique string, action Action) error {
 	defer s.once.Do(func() { s.firstAdded <- struct{}{} })
 
 	if s.drained {
-		return ErrDrained
+		return errDrained
 	}
 
 	// Reject unique duplicates
