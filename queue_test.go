@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.nbaplus.tk/backend/lib/queue"
+	"gitlab.nbaplus.tk/backend/queue"
 )
 
 func TestQueue_RunPi(t *testing.T) {
