@@ -16,7 +16,7 @@ type Sequence struct {
 
 	m sync.Mutex
 
-	// Marks sequence as drained, i.e. at the end of life rejecting ady Add requests and pending deletion.
+	// Marks sequence as drained, i.e. at the end of life, rejecting any Add requests and pending deletion.
 	drained bool
 
 	// List of ordered jobs
@@ -40,12 +40,15 @@ func (s *Sequence) Run() {
 
 	for {
 		s.m.Lock()
+
 		job, found := s.shift()
 		if !found {
 			s.drained = true
 			s.m.Unlock()
+
 			break
 		}
+
 		s.m.Unlock()
 
 		job.action()
@@ -56,7 +59,7 @@ func (s *Sequence) Run() {
 
 var (
 	ErrDuplicate = errors.New("duplicate")
-	errDrained   = errors.New("drained")
+	errDrained   = errors.New("drainedCh")
 )
 
 func (s *Sequence) Add(priority int, unique string, action Action) error {
@@ -115,6 +118,7 @@ func findDuplicates(jobs []seqJob, unique string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
