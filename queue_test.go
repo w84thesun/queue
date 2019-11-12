@@ -91,8 +91,6 @@ func TestQueue_Run(t *testing.T) {
 	q := queue.NewQueue()
 	go q.Run()
 
-	wg := sync.WaitGroup{}
-
 	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    High,
@@ -111,7 +109,6 @@ func TestQueue_Run(t *testing.T) {
 		},
 	})
 
-	wg.Add(1)
 	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Low,
