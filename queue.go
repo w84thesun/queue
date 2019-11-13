@@ -26,8 +26,6 @@ type Queue struct {
 type StopStrategy int
 
 const (
-	None StopStrategy = 0
-
 	// Stop queue and terminate all pending sequences immediately
 	Immediate StopStrategy = 1
 
@@ -116,7 +114,15 @@ func (q *Queue) handleRequest(req jobRequest) {
 	req.reply <- nil
 }
 
-func (q *Queue) Stop(strategy StopStrategy) {
+func (q *Queue) Stop() {
+	q.stop(Immediate)
+}
+
+func (q *Queue) GracefulStop() {
+	q.stop(Drain)
+}
+
+func (q *Queue) stop(strategy StopStrategy) {
 	q.stopCh <- strategy
 	<-q.stopped
 }

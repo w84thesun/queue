@@ -87,7 +87,7 @@ func TestQueue_RunPi(t *testing.T) {
 
 	wg.Wait()
 	log.Println("stopping")
-	q.Stop(queue.Drain)
+	q.GracefulStop()
 }
 
 func TestQueue_Run(t *testing.T) {
@@ -144,7 +144,7 @@ func TestQueue_Run(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestQueue_Run_ImmediateStop(t *testing.T) {
+func TestQueue_Stop(t *testing.T) {
 	q := queue.NewQueue()
 	go q.Run()
 
@@ -167,13 +167,13 @@ func TestQueue_Run_ImmediateStop(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	q.Stop(queue.Immediate)
+	q.Stop()
 	log.Println("immediately")
 	time.Sleep(time.Second)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&i))
 }
 
-func TestQueue_Run_Drain(t *testing.T) {
+func TestQueue_GracefulStop(t *testing.T) {
 	q := queue.NewQueue()
 	go q.Run()
 
@@ -196,7 +196,7 @@ func TestQueue_Run_Drain(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	q.Stop(queue.Drain)
+	q.GracefulStop()
 	log.Println("drained")
 	time.Sleep(time.Second)
 	assert.Equal(t, int32(4), atomic.LoadInt32(&i))
