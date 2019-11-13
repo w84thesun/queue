@@ -24,6 +24,9 @@ type Sequence struct {
 
 	// Pass sequence key here to delete it from pool
 	delete chan<- string
+
+	// When closed indicates that sequence si terminated, dropping all queued jobs
+	terminated chan struct{}
 }
 
 func NewSequence(key string, delete chan<- string) *Sequence {
@@ -32,6 +35,7 @@ func NewSequence(key string, delete chan<- string) *Sequence {
 		firstAdded: make(chan struct{}),
 		jobs:       []seqJob{},
 		delete:     delete,
+		terminated: make(chan struct{}),
 	}
 }
 
@@ -39,6 +43,13 @@ func (s *Sequence) Run() {
 	<-s.firstAdded
 
 	for {
+		// Check for termination
+		select {
+		case <-s.terminated:
+			break
+		default:
+		}
+
 		s.m.Lock()
 
 		job, found := s.shift()
@@ -59,7 +70,7 @@ func (s *Sequence) Run() {
 
 var (
 	ErrDuplicate = errors.New("duplicate")
-	errDrained   = errors.New("drainedCh")
+	errDrained   = errors.New("drained")
 )
 
 func (s *Sequence) Add(priority int, unique string, action Action) error {
@@ -142,4 +153,9 @@ func (s *Sequence) shift() (job seqJob, ok bool) {
 	job, s.jobs = s.jobs[0], s.jobs[1:]
 
 	return job, true
+}
+
+// Mark sequence for termination
+func (s *Sequence) Terminate() {
+	close(s.terminated)
 }

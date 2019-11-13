@@ -84,7 +84,7 @@ func TestQueue_RunPi(t *testing.T) {
 
 	wg.Wait()
 	log.Println("stopping")
-	q.Stop()
+	q.Stop(queue.Drain)
 }
 
 func TestQueue_Run(t *testing.T) {
@@ -137,6 +137,29 @@ func TestQueue_Run(t *testing.T) {
 		},
 		Unique: "recalculate",
 	})
+
+	time.Sleep(time.Second)
+}
+
+func TestQueue_Run_ImmediateStop(t *testing.T) {
+	q := queue.NewQueue()
+	go q.Run()
+
+	j := queue.Job{
+		SequenceKey: "match",
+		Action: func() {
+			time.Sleep(100 * time.Millisecond)
+			log.Println("done")
+		},
+	}
+
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+
+	q.Stop(queue.Immediately)
+	log.Println("stop")
 
 	time.Sleep(time.Second)
 }
