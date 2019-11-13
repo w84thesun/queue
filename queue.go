@@ -19,7 +19,7 @@ type Queue struct {
 	// Used to break Run() cycle
 	stopCh chan StopStrategy
 
-	// Indicates that all sequences were drained in graceful stop
+	// Will be closed when .Run() is out of cycle
 	stopped chan struct{}
 }
 
@@ -130,7 +130,7 @@ func (q *Queue) terminateAllSequences() {
 var ErrQueueStopped = errors.New("queue is stopped")
 
 // Entry point to Sequence.
-// Could fail if unique job is duplicated and queue is stopping/stopped.
+// Could fail if unique job is duplicated or queue is stopping/stopped.
 func (q *Queue) Add(job Job) (err error) {
 	reply := make(chan error)
 	select {
