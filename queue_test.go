@@ -4,8 +4,11 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"gitlab.nbaplus.tk/backend/queue"
 )
@@ -84,14 +87,12 @@ func TestQueue_RunPi(t *testing.T) {
 
 	wg.Wait()
 	log.Println("stopping")
-	q.Stop()
+	q.GracefulStop()
 }
 
 func TestQueue_Run(t *testing.T) {
 	q := queue.NewQueue()
 	go q.Run()
-
-	wg := sync.WaitGroup{}
 
 	q.Add(queue.Job{
 		SequenceKey: "match 1",
@@ -111,7 +112,6 @@ func TestQueue_Run(t *testing.T) {
 		},
 	})
 
-	wg.Add(1)
 	q.Add(queue.Job{
 		SequenceKey: "match 1",
 		Priority:    Low,
@@ -142,6 +142,64 @@ func TestQueue_Run(t *testing.T) {
 	})
 
 	time.Sleep(time.Second)
+}
+
+func TestQueue_Stop(t *testing.T) {
+	q := queue.NewQueue()
+	go q.Run()
+
+	var i int32
+
+	j := queue.Job{
+		SequenceKey: "match",
+		Action: func() {
+			atomic.AddInt32(&i, 1)
+
+			time.Sleep(100 * time.Millisecond)
+			log.Println("done")
+		},
+	}
+
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+
+	time.Sleep(150 * time.Millisecond)
+
+	q.Stop()
+	log.Println("immediately")
+	time.Sleep(time.Second)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&i))
+}
+
+func TestQueue_GracefulStop(t *testing.T) {
+	q := queue.NewQueue()
+	go q.Run()
+
+	var i int32
+
+	j := queue.Job{
+		SequenceKey: "match",
+		Action: func() {
+			atomic.AddInt32(&i, 1)
+
+			time.Sleep(100 * time.Millisecond)
+			log.Println("done")
+		},
+	}
+
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+	q.Add(j)
+
+	time.Sleep(150 * time.Millisecond)
+
+	q.GracefulStop()
+	log.Println("drained")
+	time.Sleep(time.Second)
+	assert.Equal(t, int32(4), atomic.LoadInt32(&i))
 }
 
 const (

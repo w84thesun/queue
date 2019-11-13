@@ -16,7 +16,7 @@ type Sequence struct {
 
 	m sync.Mutex
 
-	// Marks sequence as drained, i.e. at the end of life rejecting ady Add requests and pending deletion.
+	// Marks sequence as drained, i.e. at the end of life, rejecting any Add requests and pending deletion.
 	drained bool
 
 	// List of ordered jobs
@@ -24,6 +24,9 @@ type Sequence struct {
 
 	// Pass sequence key here to delete it from pool
 	delete chan<- string
+
+	// When closed indicates that sequence si terminated, dropping all queued jobs
+	terminated chan struct{}
 }
 
 func NewSequence(key string, delete chan<- string) *Sequence {
@@ -32,20 +35,32 @@ func NewSequence(key string, delete chan<- string) *Sequence {
 		firstAdded: make(chan struct{}),
 		jobs:       []seqJob{},
 		delete:     delete,
+		terminated: make(chan struct{}),
 	}
 }
 
 func (s *Sequence) Run() {
 	<-s.firstAdded
 
+cycle:
 	for {
+		// Check for termination
+		select {
+		case <-s.terminated:
+			break cycle
+		default:
+		}
+
 		s.m.Lock()
+
 		job, found := s.shift()
 		if !found {
 			s.drained = true
 			s.m.Unlock()
+
 			break
 		}
+
 		s.m.Unlock()
 
 		job.action()
@@ -115,6 +130,7 @@ func findDuplicates(jobs []seqJob, unique string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -138,4 +154,9 @@ func (s *Sequence) shift() (job seqJob, ok bool) {
 	job, s.jobs = s.jobs[0], s.jobs[1:]
 
 	return job, true
+}
+
+// Mark sequence for termination
+func (s *Sequence) Terminate() {
+	close(s.terminated)
 }
