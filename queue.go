@@ -28,11 +28,12 @@ type StopStrategy int
 const (
 	None StopStrategy = 0
 
-	Immediately StopStrategy = 1
+	// Stop queue and terminate all pending sequences immediately
+	Immediate StopStrategy = 1
 
 	// Try to finish all sequences and only then block new jobs.
 	// Can be useful for cases with chaining queue calls (i.e. A queues B, B queues C),
-	//  but can possibly run indefinitely if jobs keep incoming, so its on client side to stop
+	//  but can possibly run indefinitely if jobs keep incoming, so its on client side to stop them
 	Drain StopStrategy = 2
 )
 
@@ -69,7 +70,7 @@ cycle:
 
 		case stopStrategy = <-q.stopCh:
 			switch stopStrategy {
-			case Immediately:
+			case Immediate:
 				q.terminateAllSequences()
 
 				break cycle

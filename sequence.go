@@ -42,11 +42,12 @@ func NewSequence(key string, delete chan<- string) *Sequence {
 func (s *Sequence) Run() {
 	<-s.firstAdded
 
+cycle:
 	for {
 		// Check for termination
 		select {
 		case <-s.terminated:
-			break
+			break cycle
 		default:
 		}
 
