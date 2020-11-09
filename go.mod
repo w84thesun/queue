@@ -1,4 +1,4 @@
-module gitlab.nbaplus.tk/backend/queue
+module github.com/sanyokbig/queue
 
 go 1.12
 

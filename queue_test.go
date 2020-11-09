@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.nbaplus.tk/backend/queue"
+	"github.com/sanyokbig/queue"
 )
 
 func TestQueue_RunPi(t *testing.T) {
